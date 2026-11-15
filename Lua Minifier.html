@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lua Minifier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0c; --surface:#131316; --surface2:#19191d; --border:#26262b;
+  --text:#e9e9ec; --muted:#8c8c93; --accent:#e23a52; --accent-dim:#3a1620;
+  --ok:#3ac77a; --mono:'JetBrains Mono',monospace; --ui:'Inter',sans-serif;
+  color-scheme: dark; padding-top: env(safe-area-inset-top,0px); padding-bottom: env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui);display:flex;flex-direction:column}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+
+header{padding:22px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header h1{font-family:var(--mono);font-size:18px;font-weight:600;margin:0;letter-spacing:.01em}
+header h1 span{color:var(--accent)}
+header p{margin:0;color:var(--muted);font-size:13px}
+
+main{flex:1;display:flex;flex-direction:column;padding:18px 24px 24px;gap:14px;max-width:1280px;width:100%;margin:0 auto}
+
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px}
+.opt{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text);cursor:pointer;user-select:none}
+.opt input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+.spacer{flex:1}
+button{font-family:var(--ui);font-size:13.5px;font-weight:500;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);padding:9px 14px;cursor:pointer;transition:border-color .15s,background .15s}
+button:hover{border-color:#3a3a40}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{background:#ca2e45}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.small{padding:6px 10px;font-size:12px}
+
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1;min-height:420px}
+@media (max-width:860px){.panes{grid-template-columns:1fr}}
+
+.pane{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;min-height:340px}
+.pane-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)}
+.pane-head .label{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.pane-head .btns{display:flex;gap:6px}
+
+.editor-wrap{flex:1;display:flex;position:relative;overflow:hidden}
+.gutter{width:44px;flex:none;background:var(--surface2);color:#55555c;font-family:var(--mono);font-size:13px;line-height:21px;padding:12px 0;text-align:right;overflow:hidden;user-select:none}
+.gutter div{padding-right:10px}
+textarea,.outbox{flex:1;resize:none;border:none;outline:none;background:transparent;color:var(--text);font-family:var(--mono);font-size:13px;line-height:21px;padding:12px 14px;white-space:pre;overflow:auto;tab-size:2}
+.outbox{white-space:pre-wrap;word-break:break-word}
+textarea::placeholder{color:#4a4a50}
+
+.dropzone{margin:0 14px 10px;border:1px dashed var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dropzone.drag{border-color:var(--accent);color:var(--text)}
+.dropzone input[type=file]{display:none}
+.filename{color:var(--text);font-family:var(--mono)}
+
+.statline{display:flex;gap:18px;padding:9px 14px;border-top:1px solid var(--border);font-size:12px;color:var(--muted);font-family:var(--mono)}
+.statline b{color:var(--text);font-weight:500}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 18px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{border-color:var(--ok);color:var(--ok)}
+.toast.err{border-color:var(--accent);color:var(--accent)}
+
+.note{font-size:12px;color:var(--muted);line-height:1.6}
+.note b{color:var(--text)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Lua<span>Minifier</span></h1>
+  <p>Minify &amp; rename local variables — Lua 5.1–5.4 dan Luau. Semantik kode tetap sama persis.</p>
+</header>
+
+<main>
+  <div class="controls">
+    <label class="opt"><input type="checkbox" id="optComments" checked> Hapus komentar</label>
+    <label class="opt"><input type="checkbox" id="optWhitespace" checked> Rapatkan whitespace</label>
+    <label class="opt"><input type="checkbox" id="optRename" checked> Rename local variable</label>
+    <div class="spacer"></div>
+    <button class="primary" id="btnProcess">Proses</button>
+  </div>
+
+  <div class="panes">
+    <div class="pane">
+      <div class="pane-head">
+        <span class="label">source.lua</span>
+        <div class="btns">
+          <button class="small" id="btnPaste">Tempel</button>
+          <button class="small" id="btnClearIn">Bersihkan</button>
+        </div>
+      </div>
+      <div class="dropzone" id="dropzone">
+        <span>Tarik file .lua/.luau/.txt ke sini, atau <label for="fileInput" style="color:var(--accent);cursor:pointer">pilih file</label></span>
+        <span class="filename" id="fileLabel"></span>
+        <input type="file" id="fileInput" accept=".lua,.luau,.txt">
+      </div>
+      <div class="editor-wrap">
+        <div class="gutter" id="gutterIn"></div>
+        <textarea id="src" placeholder="-- tempel source Lua/Luau di sini
+local function greet(name)
+    local message = &quot;Hello, &quot; .. name
+    print(message)
+end" spellcheck="false"></textarea>
+      </div>
+      <div class="statline"><span>Baris: <b id="linesIn">0</b></span><span>Karakter: <b id="charsIn">0</b></span></div>
+    </div>
+
+    <div class="pane">
+      <div class="pane-head">
+        <span class="label">output.lua</span>
+        <div class="btns">
+          <button class="small" id="btnCopy">Salin</button>
+          <button class="small" id="btnDownload">Unduh</button>
+        </div>
+      </div>
+      <div class="editor-wrap">
+        <div class="gutter" id="gutterOut"></div>
+        <div class="outbox" id="out"></div>
+      </div>
+      <div class="statline"><span>Baris: <b id="linesOut">0</b></span><span>Karakter: <b id="charsOut">0</b></span><span>Pengurangan: <b id="reduction">–</b></span></div>
+    </div>
+  </div>
+
+  <p class="note"><b>Catatan:</b> nama global, member akses (<code>:</code>/<code>.</code>), string, dan API Roblox (game, workspace, script, dll.) tidak diubah — hanya local variable &amp; parameter fungsi yang di-rename. Proses sepenuhnya di browser, source tidak dikirim ke server mana pun.</p>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const KEYWORDS = new Set(['and','break','do','else','elseif','end','false','for','function','goto','if','in','local','nil','not','or','repeat','return','then','true','until','while','continue']);
+const PROTECT = new Set(['game','workspace','script','Instance','wait','task','print','warn','error','pairs','ipairs','pcall','xpcall','type','typeof','tostring','tonumber','table','string','math','os','coroutine','require','select','rawget','rawset','rawequal','setmetatable','getmetatable','unpack','next','Enum','Vector3','Vector2','CFrame','Color3','UDim2','UDim','Instance','self','_G','shared']);
+
+// ---- Tokenizer: splits source into tokens, each tagged by type ----
+function tokenize(src){
+  const toks = [];
+  let i = 0, n = src.length;
+  const isIdentStart = c => /[A-Za-z_]/.test(c);
+  const isIdentPart = c => /[A-Za-z0-9_]/.test(c);
+  while(i < n){
+    const c = src[i];
+    // long comment / long string --[[ ]] or [[ ]]
+    if(c === '-' && src[i+1] === '-'){
+      let j = i+2;
+      let eq = 0;
+      if(src[j] === '['){ let k=j+1; while(src[k]==='='){eq++;k++;} if(src[k]==='['){ 
+        const close = ']'+'='.repeat(eq)+']';
+        const end = src.indexOf(close, k+1);
+        const stop = end===-1? n : end+close.length;
+        toks.push({t:'comment', v:src.slice(i,stop)}); i = stop; continue;
+      }}
+      let end = src.indexOf('\n', j);
+      if(end===-1) end = n;
+      toks.push({t:'comment', v:src.slice(i,end)}); i = end; continue;
+    }
+    if(c === '[' && (src[i+1]==='[' || src[i+1]==='=')){
+      let k=i+1, eq=0;
+      while(src[k]==='='){eq++;k++;}
+      if(src[k]==='['){
+        const close = ']'+'='.repeat(eq)+']';
+        const end = src.indexOf(close, k+1);
+        const stop = end===-1? n : end+close.length;
+        toks.push({t:'string', v:src.slice(i,stop)}); i = stop; continue;
+      }
+    }
+    if(c === '"' || c === "'"){
+      let j = i+1, q=c;
+      while(j<n && src[j]!==q){ if(src[j]==='\\') j++; j++; }
+      j = Math.min(j+1,n);
+      toks.push({t:'string', v:src.slice(i,j)}); i=j; continue;
+    }
+    if(isIdentStart(c)){
+      let j=i+1; while(j<n && isIdentPart(src[j])) j++;
+      const w = src.slice(i,j);
+      toks.push({t: KEYWORDS.has(w)?'keyword':'ident', v:w}); i=j; continue;
+    }
+    if(/[0-9]/.test(c) || (c==='.' && /[0-9]/.test(src[i+1]||''))){
+      let j=i+1; while(j<n && /[0-9a-fA-FxX.eE+\-]/.test(src[j]) && !( (src[j]==='+'||src[j]==='-') && !/[eE]/.test(src[j-1]) )) j++;
+      toks.push({t:'number', v:src.slice(i,j)}); i=j; continue;
+    }
+    if(/\s/.test(c)){
+      let j=i+1; while(j<n && /\s/.test(src[j])) j++;
+      toks.push({t:'space', v:src.slice(i,j)}); i=j; continue;
+    }
+    toks.push({t:'op', v:c}); i++;
+  }
+  return toks;
+}
+
+function processSource(src, opts){
+  let toks = tokenize(src);
+  if(opts.comments) toks = toks.filter(t=>t.t!=='comment');
+
+  if(opts.rename){
+    // find local declarations: 'local' ident[,ident...] and function params
+    const names = new Set();
+    for(let k=0;k<toks.length;k++){
+      if(toks[k].t==='keyword' && toks[k].v==='local'){
+        let m=k+1;
+        while(m<toks.length){
+          if(toks[m].t==='ident'){
+            names.add(toks[m].v);
+            let p=m+1; while(p<toks.length && toks[p].t==='space') p++;
+            if(toks[p] && toks[p].v===','){ m=p+1; continue; }
+          }
+          break;
+        }
+      }
+      if(toks[k].t==='keyword' && toks[k].v==='function'){
+        // skip name (may be dotted/colon - don't rename those), find '('
+        let p=k+1;
+        while(p<toks.length && toks[p].v!=='(') p++;
+        let q=p+1;
+        while(q<toks.length && toks[q].v!==')'){
+          if(toks[q].t==='ident') names.add(toks[q].v);
+          q++;
+        }
+      }
+    }
+    names.forEach(n=>{ if(PROTECT.has(n)) names.delete(n); });
+    const map = new Map();
+    let idx=0;
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+    function nextName(){
+      let s=''; let x=idx++;
+      do{ s = alphabet[x%26]+s; x=Math.floor(x/26)-1; }while(x>=0);
+      return '_'+s;
+    }
+    names.forEach(n=>{ if(!KEYWORDS.has(n)) map.set(n, nextName()); });
+
+    // only rename ident tokens NOT preceded by '.' or ':' (member access), and not followed by '=' as table-key colon-less (rare edge skip)
+    for(let k=0;k<toks.length;k++){
+      if(toks[k].t==='ident' && map.has(toks[k].v)){
+        let prev = k-1; while(prev>=0 && toks[prev].t==='space') prev--;
+        if(prev>=0 && (toks[prev].v==='.'||toks[prev].v===':')) continue; // member access, skip
+        toks[k] = {t:'ident', v: map.get(toks[k].v)};
+      }
+    }
+  }
+
+  if(opts.whitespace){
+    const out=[];
+    for(let k=0;k<toks.length;k++){
+      const t = toks[k];
+      if(t.t==='space'){
+        const prev=toks[k-1], next=toks[k+1];
+        const needNeeded = prev && next && (prev.t==='ident'||prev.t==='keyword'||prev.t==='number') && (next.t==='ident'||next.t==='keyword'||next.t==='number');
+        if(t.v.includes('\n') && (!next || next.t!=='comment')){
+          out.push('\n');
+        } else if(needNeeded){
+          out.push(' ');
+        }
+        continue;
+      }
+      out.push(t.v);
+    }
+    return out.join('').replace(/\n{2,}/g,'\n').replace(/^\s+|\s+$/g,'')+'\n';
+  }
+  return toks.map(t=>t.v).join('');
+}
+
+// ---- UI wiring ----
+const $ = id => document.getElementById(id);
+const src = $('src'), out = $('out');
+
+function updateGutter(gutterEl, text){
+  const n = text ? text.split('\n').length : 1;
+  let html='';
+  for(let i=1;i<=n;i++) html += '<div>'+i+'</div>';
+  gutterEl.innerHTML = html;
+}
+function syncStats(){
+  $('linesIn').textContent = src.value ? src.value.split('\n').length : 0;
+  $('charsIn').textContent = src.value.length;
+  updateGutter($('gutterIn'), src.value);
+}
+src.addEventListener('input', syncStats);
+src.addEventListener('scroll', ()=>{ $('gutterIn').scrollTop = src.scrollTop; });
+out.addEventListener('scroll', ()=>{ $('gutterOut').scrollTop = out.scrollTop; });
+syncStats();
+
+function toast(msg, kind){
+  const t = $('toast'); t.textContent = msg; t.className = 'toast show '+(kind||'');
+  clearTimeout(toast._h); toast._h = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+$('btnProcess').addEventListener('click', ()=>{
+  if(!src.value.trim()){ toast('Source masih kosong', 'err'); return; }
+  const opts = { comments: $('optComments').checked, whitespace: $('optWhitespace').checked, rename: $('optRename').checked };
+  let result;
+  try{ result = processSource(src.value, opts); }
+  catch(e){ toast('Gagal memproses: cek sintaks source', 'err'); return; }
+  out.textContent = result;
+  const li = result.split('\n').length, ci = result.length;
+  $('linesOut').textContent = li; $('charsOut').textContent = ci;
+  updateGutter($('gutterOut'), result);
+  const before = src.value.length;
+  const pct = before? Math.round((1 - ci/before)*100) : 0;
+  $('reduction').textContent = (pct>=0? pct : 0) + '%';
+  toast('Berhasil diproses', 'ok');
+});
+
+$('btnClearIn').addEventListener('click', ()=>{ src.value=''; syncStats(); $('fileLabel').textContent=''; });
+$('btnPaste').addEventListener('click', async ()=>{
+  try{ const t = await navigator.clipboard.readText(); src.value = t; syncStats(); toast('Ditempel','ok'); }
+  catch(e){ toast('Tidak bisa mengakses clipboard — paste manual (Ctrl/Cmd+V)','err'); }
+});
+
+$('btnCopy').addEventListener('click', async ()=>{
+  if(!out.textContent){ toast('Belum ada output', 'err'); return; }
+  try{ await navigator.clipboard.writeText(out.textContent); toast('Output disalin','ok'); }
+  catch(e){
+    const ta=document.createElement('textarea'); ta.value=out.textContent; document.body.appendChild(ta);
+    ta.select(); try{ document.execCommand('copy'); toast('Output disalin','ok'); }catch(_){ toast('Gagal menyalin','err'); }
+    ta.remove();
+  }
+});
+
+$('btnDownload').addEventListener('click', ()=>{
+  if(!out.textContent){ toast('Belum ada output', 'err'); return; }
+  const blob = new Blob([out.textContent], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const fname = ($('fileLabel').textContent || 'DZ_Minified.lua').replace(/\.(lua|luau|txt)$/i,'') + '.min.lua';
+  a.href = url; a.download = fname; a.click();
+  URL.revokeObjectURL(url);
+  toast('File diunduh','ok');
+});
+
+// file upload
+const dropzone = $('dropzone'), fileInput = $('fileInput');
+function readFile(file){
+  if(!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if(!['lua','luau','txt'].includes(ext)){ toast('Ekstensi tidak didukung (.lua/.luau/.txt)','err'); return; }
+  if(file.size === 0){ toast('File kosong','err'); return; }
+  const reader = new FileReader();
+  reader.onload = e => { src.value = e.target.result; syncStats(); $('fileLabel').textContent = file.name + ' · ' + (file.size/1024).toFixed(1)+' KB'; toast('File dimuat','ok'); };
+  reader.onerror = () => toast('Gagal membaca file','err');
+  reader.readAsText(file);
+}
+fileInput.addEventListener('change', e => readFile(e.target.files[0]));
+['dragenter','dragover'].forEach(ev=> dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev=> dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e=>{ readFile(e.dataTransfer.files[0]); });
+</script>
+</body>
+</html>
